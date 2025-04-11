@@ -14,16 +14,16 @@ const JWT_SECRET = 'your-secret-key'; // Replace with a strong, unique secret
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-  
+
     if (token == null) return res.sendStatus(401); // Unauthorized
-  
+
     jwt.verify(token, JWT_SECRET, (err, user) => {
       if (err) return res.sendStatus(403); // Forbidden
       req.user = user; // Attach the user payload to the request object
       next(); // Proceed to the next middleware or route handler
     });
   };
-  
+
   // Middleware to check if the user is an admin
   const authorizeAdmin = (req, res, next) => {
     if (req.user && req.user.role === 'admin') {
@@ -129,7 +129,7 @@ app.post('/api/auth/login/admin', async (req, res) => {
 app.post('/api/admin/events', authenticateToken, authorizeAdmin, async (req, res) => {
     try {
       const { sportName, eventName, date, entryFee, prize, ageGroup, additionalNote, isTeamBased, participantsPerTeam } = req.body;
-  
+
       const newEvent = new Event({
         sportName,
         eventName,
@@ -141,7 +141,7 @@ app.post('/api/admin/events', authenticateToken, authorizeAdmin, async (req, res
         isTeamBased,
         participantsPerTeam,
       });
-  
+
       await newEvent.save();
       res.status(201).json({ message: 'Event created successfully', event: newEvent });
     } catch (error) {
@@ -164,7 +164,7 @@ app.get('/api/events', authenticateToken, async (req, res) => {
   });
 
 // --- Edit an existing event by ID (Admin only) ---
-app.put('/api/admin/events/:eventId', authenticateAdmin, async (req, res) => {
+app.put('/api/admin/events/:eventId', authenticateToken, authorizeAdmin, async (req, res) => {
   const { eventId } = req.params;
   const updatedEventData = req.body;
 
@@ -183,7 +183,7 @@ app.put('/api/admin/events/:eventId', authenticateAdmin, async (req, res) => {
 });
 
 // --- Delete an event by ID (Admin only) ---
-app.delete('/api/admin/events/:eventId', authenticateAdmin, async (req, res) => {
+app.delete('/api/admin/events/:eventId', authenticateToken, authorizeAdmin, async (req, res) => {
   const { eventId } = req.params;
 
   try {
@@ -209,7 +209,7 @@ app.get('/api/admin/events', authenticateToken, authorizeAdmin, async (req, res)
       res.status(500).json({ message: 'Error fetching events', error: error.message });
     }
   });
-  
+
 // Basic route (as before)
 app.get('/', (req, res) => {
   res.send('Hello from the Sports Management Backend!');
@@ -222,25 +222,25 @@ app.post('/api/events/:eventId/register', authenticateToken, async (req, res) =>
     const { eventId } = req.params;
     const { teamName, teamMembers } = req.body;
     const userId = req.user.userId;
-  
+
     try {
       // Find the event by its ID
       const event = await Event.findById(eventId);
       // Find the user by their ID
       const user = await User.findById(userId);
-  
+
       if (!event || !user) {
         return res.status(404).json({ message: 'Event or user not found' }); // 404 Not Found
       }
-  
+
       // Check if the user is already registered for this event
       const isAlreadyRegistered = event.registeredUsers.some(reg => reg.user.toString() === userId);
       if (isAlreadyRegistered) {
         return res.status(400).json({ message: 'User is already registered for this event' }); // 400 Bad Request
       }
-  
+
       const registrationData = { user: userId };
-  
+
       // Handle team-based registration
       if (event.isTeamBased) {
         if (!teamName || !Array.isArray(teamMembers) || teamMembers.length === 0 || (event.participantsPerTeam && teamMembers.length !== event.participantsPerTeam)) {
@@ -249,15 +249,15 @@ app.post('/api/events/:eventId/register', authenticateToken, async (req, res) =>
         registrationData.teamName = teamName;
         registrationData.teamMembers = teamMembers;
       }
-  
+
       // Add the user to the event's registered users
       event.registeredUsers.push(registrationData);
       await event.save();
-  
+
       // Add the event to the user's registered events
       user.registeredEvents.push(eventId);
       await user.save();
-  
+
       res.status(200).json({ message: 'Successfully registered for the event' }); // 200 OK
     } catch (error) {
       console.error('Error registering for event:', error);
@@ -270,15 +270,15 @@ app.post('/api/events/:eventId/register', authenticateToken, async (req, res) =>
 // Get user's registered events
 app.get('/api/user/registered-events', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
-  
+
     try {
       // Find the user by their ID and populate the 'registeredEvents' field
       const user = await User.findById(userId).populate('registeredEvents');
-  
+
       if (!user) {
         return res.status(404).json({ message: 'User not found' }); // 404 Not Found
       }
-  
+
       res.status(200).json(user.registeredEvents); // Send the array of registered events
     } catch (error) {
       console.error('Error fetching registered events:', error);
